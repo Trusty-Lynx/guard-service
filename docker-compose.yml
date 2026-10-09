@@ -1,0 +1,17 @@
+name: key-service
+
+services:
+  app:
+    env_file:
+      - .env
+    build: .
+    container_name: key-service
+    user: "1002:1002"
+    ports:
+      - "7492:8080"
+    restart: unless-stopped
+
+networks:
+  default:
+    name: trustylynx-net
+    external: true
