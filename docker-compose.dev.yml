@@ -2,11 +2,11 @@ services:
   key-db:
     image: postgres:17
     environment:
-      POSTGRES_DB: keys
+      POSTGRES_DB: guard
       POSTGRES_USER: dev
       POSTGRES_PASSWORD: dev
-    ports: ["5433:5432"]
-    volumes: [key-db-data:/var/lib/postgresql/data]
+    ports: ["5434:5432"]
+    volumes: [guard-db-data:/var/lib/postgresql/data]
 
 volumes:
-  key-db-data:
+  guard-db-data:

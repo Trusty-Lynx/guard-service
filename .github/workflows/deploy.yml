@@ -23,12 +23,12 @@ jobs:
             --exclude='.git' \
             --exclude='.github' \
             --exclude='.env' \
-            ./ trustylynx@152.53.183.40:/opt/trustylynx/key-service/
+            ./ trustylynx@152.53.183.40:/opt/trustylynx/guard-service/
 
       - name: Build & restart
         run: |
           ssh trustylynx@152.53.183.40 '
-            cd /opt/trustylynx/key-service &&
+            cd /opt/trustylynx/guard-service &&
             docker compose build &&
             docker compose up -d
           '
