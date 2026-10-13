@@ -5,7 +5,7 @@ services:
     env_file:
       - .env
     build: .
-    container_name: key-service
+    container_name: guard-service
     user: "1002:1002"
     ports:
       - "7492:8080"
