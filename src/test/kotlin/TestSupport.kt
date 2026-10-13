@@ -1,9 +1,9 @@
 package de.trustylynx
 
 import de.trustylynx.common.AlreadyExists
-import de.trustylynx.domain.ServerKeyService
-import de.trustylynx.persistence.ServerKeyRepository
-import de.trustylynx.persistence.WrappedKey
+import de.trustylynx.domain.DeviceService
+import de.trustylynx.persistence.Device
+import de.trustylynx.persistence.DeviceRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -18,29 +18,22 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.util.HexFormat
+import java.security.KeyPairGenerator
+import java.security.interfaces.ECPublicKey
+import java.security.spec.ECGenParameterSpec
 import java.util.concurrent.ConcurrentHashMap
 
-// Testwerte. Tokens und pepper müssen zu tasks.test in build.gradle.kts passen,
-// weil Secrets sie aus Umgebungsvariablen liest.
+// Testwert. Muss zu tasks.test in build.gradle.kts passen, weil Secrets ihn aus Umgebungsvariablen liest.
 const val AUTH_TOKEN = "test-auth-token"
-const val VAULT_TOKEN = "test-vault-token"
-const val AES_TOKEN = "test-aes-token"
-const val CHACHA_TOKEN = "test-chacha-token"
-const val PEPPER_LOGIN = "pepper-login-test-value-32-bytes"
-const val PEPPER_VAULT = "pepper-vault-test-value-32-bytes"
-
-/** Eigener MSK für die Tests, unabhängig von Secrets.msk. */
-val TEST_MSK = ByteArray(32) { 9 }
 
 /** Startet die App ohne application.yaml (also ohne echte DB) mit einem In-Memory-Repository. */
 fun withApp(
-    repo: InMemoryServerKeyRepository = InMemoryServerKeyRepository(),
+    repo: InMemoryDeviceRepository = InMemoryDeviceRepository(),
     block: suspend (HttpClient) -> Unit,
 ) = testApplication {
     // Leere Config, damit application.yaml nicht module() mit echter DB lädt.
     environment { config = MapApplicationConfig() }
-    application { configureApp(ServerKeyService(repo, TEST_MSK)) }
+    application { configureApp(DeviceService(repo)) }
     block(client)
 }
 
@@ -55,23 +48,35 @@ suspend fun HttpResponse.json(): JsonObject = Json.parseToJsonElement(bodyAsText
 /** Fehlercode aus {"error": "..."} */
 suspend fun HttpResponse.errorCode(): String = json()["error"]!!.jsonPrimitive.content
 
-fun hex(s: String): ByteArray = HexFormat.of().parseHex(s)
+/** Erzeugt einen echten P-256-Schlüssel und gibt ihn roh (04 ‖ x ‖ y, 65 Byte) zurück, wie Web Crypto ihn exportiert. */
+fun newPublicKey(): ByteArray {
+    val generator = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }
+    val point = (generator.generateKeyPair().public as ECPublicKey).w
+    // BigInteger kann ein führendes 0-Byte haben oder kürzer sein → auf genau 32 Byte bringen
+    fun to32(n: java.math.BigInteger) = n.toByteArray().takeLast(32).toByteArray().let { ByteArray(32 - it.size) + it }
+    return byteArrayOf(0x04) + to32(point.affineX) + to32(point.affineY)
+}
 
-fun b64(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)
+/** base64url ohne Padding, so wie der Guard die deviceId speichert. */
+fun b64url(bytes: ByteArray): String = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
 
-fun unb64(s: String): ByteArray = java.util.Base64.getDecoder().decode(s)
+/** Neue gültige deviceId (= öffentlicher Schlüssel, base64url ohne Padding). */
+fun newDeviceId(): String = b64url(newPublicKey())
 
-/** Ersatz für PostgresServerKeyRepository. Alle Zeilen gelten als aktiv, die höchste Version gewinnt. */
-class InMemoryServerKeyRepository : ServerKeyRepository {
-    val rows = ConcurrentHashMap<Pair<String, Int>, ByteArray>()
+/** Ersatz für PostgresDeviceRepository. Schlüssel ist wie in der DB (user_id, device_id). */
+class InMemoryDeviceRepository : DeviceRepository {
+    val rows = ConcurrentHashMap<Pair<String, String>, Device>()
 
-    override suspend fun create(userId: String, version: Int, wrappedSdk: ByteArray) {
-        if (rows.putIfAbsent(userId to version, wrappedSdk) != null) throw AlreadyExists()
+    override suspend fun find(userId: String, deviceId: String): Device? = rows[userId to deviceId]
+
+    override suspend fun hasDevices(userId: String): Boolean = rows.keys.any { it.first == userId }
+
+    override suspend fun create(device: Device) {
+        if (rows.putIfAbsent(device.userId to device.deviceId, device) != null) throw AlreadyExists()
     }
 
-    override suspend fun find(userId: String, version: Int?): WrappedKey? {
-        val v = version ?: rows.keys.filter { it.first == userId }.maxOfOrNull { it.second } ?: return null
-        val wrapped = rows[userId to v] ?: return null
-        return WrappedKey(v, wrapped)
+    /** Gerät direkt anlegen, z. B. um ein gesperrtes Gerät vorzubereiten. */
+    fun put(userId: String, deviceId: String, status: String) {
+        rows[userId to deviceId] = Device(userId = userId, deviceId = deviceId, status = status)
     }
 }

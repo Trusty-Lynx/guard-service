@@ -2,15 +2,14 @@ package de.trustylynx.persistence
 
 /** Eine Zeile aus devices. */
 class Device(
-    val deviceId: String,
     val userId: String,
-    val publicKey: ByteArray,   // 65 Byte, unkomprimierter P-256-Punkt (04 ‖ x ‖ y)
+    val deviceId: String,
     val status: String,         // "trusted" / "unknown" / "blocked"
 )
 
 interface DeviceRepository {
-    /** null, wenn es die deviceId nicht gibt. */
-    suspend fun find(deviceId: String): Device?
+    /** null, wenn dieser User dieses Gerät noch nicht hat. */
+    suspend fun find(userId: String, deviceId: String): Device?
 
     /** true, wenn der User schon mindestens ein Gerät hat. */
     suspend fun hasDevices(userId: String): Boolean

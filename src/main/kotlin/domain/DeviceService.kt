@@ -1,31 +1,31 @@
 package de.trustylynx.domain
 
 import de.trustylynx.common.AlreadyExists
-import de.trustylynx.common.NotFound
 import de.trustylynx.persistence.Device
 import de.trustylynx.persistence.DeviceRepository
-import java.security.PublicKey
-import java.sql.Array
-import kotlin.io.encoding.Base64
+import de.trustylynx.common.NotFound
+
 
 class DeviceService(
     private val devices: DeviceRepository
     ){
-    suspend fun check(userId: String, deviceId: String, publicKey: ByteArray?): String{
-        val existing = devices.find(deviceId)
-        if(existing != null){
-            if(existing.userId != userId) throw AlreadyExists()
-
-            if(publicKey != null && !publicKey.contentEquals(existing.publicKey)) throw AlreadyExists()
-            return existing.status
-        }
-        if (publicKey == null) throw NotFound()
+    suspend fun check(userId: String, deviceId: String): String {
+        devices.find(userId, deviceId)?.let { return it.status }
         val status = if (devices.hasDevices(userId)) UNKNOWN else TRUSTED
-        devices.create(Device(deviceId, userId, publicKey, status))
-        // TODO: bei UNKNOWN Nachricht an alle trusted-Geräte (Push-Kanal offen, #20)
+        try {
+            devices.create(Device(userId, deviceId, status))
+        } catch (e: AlreadyExists) {
+            // Zwei gleichzeitige Logins vom selben Browser: der andere war schneller → dessen Status nehmen
+            return devices.find(userId, deviceId)?.status ?: throw e
+        }
+        // TODO: bei UNKNOWN Nachricht an alle trusted-Geräte des Users (Push-Kanal offen, #20)
         return status
     }
-    companion object{
+    // Nur lesen, nichts anlegen → unbekanntes Gerät = 404
+    suspend fun status(userId: String, deviceId: String): String =
+        devices.find(userId, deviceId)?.status ?: throw NotFound()
+
+    companion object {
         const val TRUSTED = "trusted"
         const val UNKNOWN = "unknown"
         const val BLOCKED = "blocked"

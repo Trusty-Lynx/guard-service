@@ -35,10 +35,4 @@ dependencies {
 // Secrets liest Umgebungsvariablen. Für Tests feste Testwerte, müssen zu src/test/kotlin/TestSupport.kt passen
 tasks.test {
     environment("AUTH_SERVICE_TOKEN", "test-auth-token")
-    environment("VAULT_SERVICE_TOKEN", "test-vault-token")
-    environment("AES_SERVICE_TOKEN", "test-aes-token")
-    environment("CHACHA_SERVICE_TOKEN", "test-chacha-token")
-    environment("TEST_PEPPER_LOGIN", "pepper-login-test-value-32-bytes")
-    environment("TEST_PEPPER_VAULT", "pepper-vault-test-value-32-bytes")
-    environment("MSK", "msk-for-tests-only-0123456789abc")
 }
